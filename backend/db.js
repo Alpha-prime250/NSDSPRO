@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const pool = mysql.createPool({
   host: 'localhost',
-  port: 3306,
+  port: 3307,
   user: 'root',
   password: '',
   database: 'single_vendor_pos_tracking_v2',
