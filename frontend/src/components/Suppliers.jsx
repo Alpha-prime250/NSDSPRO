@@ -1,26 +1,43 @@
+
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
-import { Plus, Search, Trash2, X, Truck, RefreshCw } from 'lucide-react';
+import {
+  Search,
+  Trash2,
+  RefreshCw,
+  UserPlus,
+  LogIn,
+  X,
+  Pencil,
+  Save
+} from 'lucide-react';
 
 export default function Suppliers({ settings }) {
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [mode, setMode] = useState('register');
+  const [editingSupplier, setEditingSupplier] = useState(null);
+
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
+  const [password, setPassword] = useState('');
+
   const [isSaving, setIsSaving] = useState(false);
 
+  // ============================================
+  // LOAD SUPPLIERS
+  // ============================================
   const loadSuppliers = async () => {
     try {
       setLoading(true);
       const list = await api.getSuppliers({ search: searchTerm });
-      setSuppliers(list);
+      setSuppliers(Array.isArray(list) ? list : []);
     } catch (err) {
       console.error('Failed to load suppliers:', err);
     } finally {
@@ -32,74 +49,206 @@ export default function Suppliers({ settings }) {
     loadSuppliers();
   }, [searchTerm]);
 
-  const handleCreate = async (e) => {
+  // ============================================
+  // RESET FORM
+  // ============================================
+  const resetForm = () => {
+    setName('');
+    setCompanyName('');
+    setPhone('');
+    setEmail('');
+    setAddress('');
+    setPassword('');
+    setEditingSupplier(null);
+  };
+
+  // ============================================
+  // CLOSE MODAL
+  // ============================================
+  const closeModal = () => {
+    setIsModalOpen(false);
+    resetForm();
+    setMode('register');
+  };
+
+  // ============================================
+  // OPEN EDIT SUPPLIER FORM
+  // ============================================
+  const handleEdit = (supplier) => {
+    setEditingSupplier(supplier);
+    setName(supplier.name || '');
+    setCompanyName(supplier.company_name || '');
+    setPhone(supplier.phone || '');
+    setEmail(supplier.email || '');
+    setAddress(supplier.address || '');
+    setPassword('');
+    setMode('edit');
+    setIsModalOpen(true);
+  };
+
+  // ============================================
+  // OPEN REGISTRATION FORM
+  // ============================================
+  const openRegister = () => {
+    resetForm();
+    setMode('register');
+    setIsModalOpen(true);
+  };
+
+  // ============================================
+  // SUBMIT REGISTER / LOGIN / EDIT
+  // ============================================
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!name) return;
 
     try {
       setIsSaving(true);
-      await api.createSupplier({
-        name,
-        company_name: companyName,
-        phone,
-        email,
-        address
-      });
-      setIsModalOpen(false);
-      setName('');
-      setCompanyName('');
-      setPhone('');
-      setEmail('');
-      setAddress('');
-      loadSuppliers();
+
+      if (mode === 'edit') {
+        if (!editingSupplier?.id) {
+          throw new Error('Supplier ID is missing');
+        }
+
+        await api.updateSupplier(editingSupplier.id, {
+          name: name.trim(),
+          company_name: companyName.trim(),
+          phone: phone.trim(),
+          email: email.trim(),
+          address: address.trim()
+        });
+
+        alert('Supplier updated successfully.');
+        closeModal();
+        await loadSuppliers();
+      } else if (mode === 'register') {
+        await api.registerSupplier({
+          name: name.trim(),
+          company_name: companyName.trim(),
+          phone: phone.trim(),
+          email: email.trim(),
+          address: address.trim(),
+          password
+        });
+
+        alert('Account created successfully. Please log in to continue.');
+        resetForm();
+        setMode('login');
+      } else {
+        await api.loginSupplier({
+          email: email.trim(),
+          password
+        });
+
+        alert('Login successful.');
+        closeModal();
+        await loadSuppliers();
+      }
     } catch (err) {
-      alert(err.message || 'Failed to create supplier');
+      alert(err.message || 'Unable to continue. Please try again.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDelete = async (id, sName) => {
-    if (window.confirm(`Delete supplier "${sName}"?`)) {
-      try {
-        await api.deleteSupplier(id);
-        loadSuppliers();
-      } catch (err) {
-        alert(err.message || 'Failed to delete supplier');
-      }
+  // ============================================
+  // DELETE SUPPLIER
+  // ============================================
+  const handleDelete = async (id, supplierName) => {
+    if (!window.confirm(`Delete supplier "${supplierName}"?`)) {
+      return;
+    }
+
+    try {
+      await api.deleteSupplier(id);
+      alert('Supplier deleted successfully.');
+      await loadSuppliers();
+    } catch (err) {
+      alert(err.message || 'Failed to delete supplier');
     }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-      {/* Top Header */}
-      <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '1.25rem'
+      }}
+    >
+      {/* ========================================
+          SUPPLIERS HEADER
+      ======================================== */}
+      <div
+        className="card"
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '1rem'
+        }}
+      >
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '800' }}>Suppliers Directory</h2>
-          <span style={{ fontSize: '0.8125rem', color: 'var(--text-muted)' }}>
-            Manage distributors, wholesalers and manufacturers
+          <h2 style={{ fontSize: '1.25rem', fontWeight: '800' }}>
+            Suppliers Directory
+          </h2>
+
+          <span
+            style={{
+              fontSize: '0.8125rem',
+              color: 'var(--text-muted)'
+            }}
+          >
+            Registered suppliers who have logged in
           </span>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            flexWrap: 'wrap'
+          }}
+        >
           <div style={{ position: 'relative', width: '260px' }}>
-            <Search size={16} style={{ position: 'absolute', left: '10px', top: '10px', color: 'var(--text-muted)' }} />
-            <input 
+            <Search
+              size={16}
+              style={{
+                position: 'absolute',
+                left: '10px',
+                top: '10px',
+                color: 'var(--text-muted)'
+              }}
+            />
+
+            <input
               type="text"
-              placeholder="Search by supplier or company..."
+              placeholder="Search supplier or company..."
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="input-field"
-              style={{ paddingLeft: '2.2rem', fontSize: '0.8125rem' }}
+              style={{
+                paddingLeft: '2.2rem',
+                fontSize: '0.8125rem'
+              }}
             />
           </div>
-          <button onClick={() => setIsModalOpen(true)} className="btn btn-primary">
-            <Plus size={16} /> Add Supplier
+
+          <button
+            type="button"
+            onClick={openRegister}
+            className="btn btn-primary"
+          >
+            <UserPlus size={16} />
+            Supplier Register / Login
           </button>
         </div>
       </div>
 
-      {/* Supplier Table */}
+      {/* ========================================
+          SUPPLIERS TABLE
+      ======================================== */}
       <div className="table-container">
         <table className="data-table">
           <thead>
@@ -112,36 +261,105 @@ export default function Suppliers({ settings }) {
               <th>Action</th>
             </tr>
           </thead>
+
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                  <RefreshCw className="animate-spin" size={20} style={{ display: 'inline', marginRight: '0.5rem' }} />
+                <td
+                  colSpan="6"
+                  style={{
+                    textAlign: 'center',
+                    padding: '3rem',
+                    color: 'var(--text-muted)'
+                  }}
+                >
+                  <RefreshCw
+                    className="animate-spin"
+                    size={20}
+                    style={{
+                      display: 'inline',
+                      marginRight: '0.5rem'
+                    }}
+                  />
                   Loading suppliers...
                 </td>
               </tr>
             ) : suppliers.length === 0 ? (
               <tr>
-                <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                  No suppliers registered yet.
+                <td
+                  colSpan="6"
+                  style={{
+                    textAlign: 'center',
+                    padding: '3rem',
+                    color: 'var(--text-muted)'
+                  }}
+                >
+                  No logged-in suppliers found yet.
                 </td>
               </tr>
             ) : (
-              suppliers.map(s => (
-                <tr key={s.id}>
-                  <td style={{ fontWeight: '700' }}>{s.name}</td>
-                  <td>{s.company_name || '—'}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{s.phone || '—'}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{s.email || '—'}</td>
-                  <td style={{ color: 'var(--text-muted)' }}>{s.address || '—'}</td>
+              suppliers.map((supplier) => (
+                <tr key={supplier.id}>
+                  <td style={{ fontWeight: '700' }}>
+                    {supplier.name}
+                  </td>
+
+                  <td>{supplier.company_name || '—'}</td>
+
+                  <td style={{ color: 'var(--text-muted)' }}>
+                    {supplier.phone || '—'}
+                  </td>
+
+                  <td style={{ color: 'var(--text-muted)' }}>
+                    {supplier.email || '—'}
+                  </td>
+
+                  <td style={{ color: 'var(--text-muted)' }}>
+                    {supplier.address || '—'}
+                  </td>
+
                   <td>
-                    <button 
-                      onClick={() => handleDelete(s.id, s.name)}
-                      className="btn btn-secondary"
-                      style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', color: 'var(--danger)' }}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem'
+                      }}
                     >
-                      <Trash2 size={13} />
-                    </button>
+                      {/* EDIT BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() => handleEdit(supplier)}
+                        className="btn btn-secondary"
+                        style={{
+                          padding: '0.35rem 0.5rem',
+                          fontSize: '0.75rem',
+                          color: 'var(--primary)'
+                        }}
+                        title="Edit supplier"
+                        aria-label={`Edit ${supplier.name}`}
+                      >
+                        <Pencil size={13} />
+                      </button>
+
+                      {/* DELETE BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDelete(supplier.id, supplier.name)
+                        }
+                        className="btn btn-secondary"
+                        style={{
+                          padding: '0.35rem 0.5rem',
+                          fontSize: '0.75rem',
+                          color: 'var(--danger)'
+                        }}
+                        title="Delete supplier"
+                        aria-label={`Delete ${supplier.name}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -150,93 +368,231 @@ export default function Suppliers({ settings }) {
         </table>
       </div>
 
-      {/* Add Supplier Modal */}
+      {/* ========================================
+          REGISTER / LOGIN / EDIT MODAL
+      ======================================== */}
       {isModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsModalOpen(false)}>
-          <div className="modal-card" onClick={e => e.stopPropagation()} style={{ padding: '1.5rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: '800' }}>Add Supplier</h3>
-              <button onClick={() => setIsModalOpen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+        <div
+          className="modal-overlay"
+          onClick={closeModal}
+        >
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ padding: '1.5rem' }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '1.25rem'
+              }}
+            >
+              <h3
+                style={{
+                  fontSize: '1.1rem',
+                  fontWeight: '800'
+                }}
+              >
+                {mode === 'edit'
+                  ? 'Edit Supplier'
+                  : mode === 'register'
+                    ? 'Create Supplier Account'
+                    : 'Supplier Login'}
+              </h3>
+
+              <button
+                type="button"
+                onClick={closeModal}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
+                aria-label="Close modal"
+              >
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <form
+              onSubmit={handleSubmit}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem'
+              }}
+            >
+              {/* Registration and edit fields */}
+              {(mode === 'register' || mode === 'edit') && (
+                <>
+                  <div>
+                    <label>Contact Person *</label>
+                    <input
+                      type="text"
+                      required
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="input-field"
+                      placeholder="Supplier name"
+                    />
+                  </div>
+
+                  <div>
+                    <label>Company Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={companyName}
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className="input-field"
+                      placeholder="Company name"
+                    />
+                  </div>
+
+                  <div>
+                    <label>Phone *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="input-field"
+                      placeholder="Mobile number"
+                    />
+                  </div>
+
+                  <div>
+                    <label>Address</label>
+                    <input
+                      type="text"
+                      value={address}
+                      onChange={(e) => setAddress(e.target.value)}
+                      className="input-field"
+                      placeholder="Office / warehouse address"
+                    />
+                  </div>
+                </>
+              )}
+
               <div>
-                <label style={{ fontSize: '0.8125rem', fontWeight: '600', marginBottom: '0.25rem', display: 'block' }}>
-                  Contact Person *
-                </label>
-                <input 
-                  type="text" 
+                <label>Email *</label>
+                <input
+                  type="email"
                   required
-                  placeholder="e.g. Anil Distributors"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   className="input-field"
+                  placeholder="supplier@example.com"
+                  autoComplete="email"
                 />
               </div>
 
-              <div>
-                <label style={{ fontSize: '0.8125rem', fontWeight: '600', marginBottom: '0.25rem', display: 'block' }}>
-                  Company Name
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. ITC Wholesale Ltd."
-                  value={companyName}
-                  onChange={e => setCompanyName(e.target.value)}
-                  className="input-field"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              {/* Password is not needed when editing */}
+              {mode !== 'edit' && (
                 <div>
-                  <label style={{ fontSize: '0.8125rem', fontWeight: '600', marginBottom: '0.25rem', display: 'block' }}>
-                    Phone
-                  </label>
-                  <input 
-                    type="text" 
-                    placeholder="Mobile number"
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
+                  <label>Password *</label>
+                  <input
+                    type="password"
+                    required
+                    minLength={8}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                     className="input-field"
+                    placeholder="At least 8 characters"
+                    autoComplete={
+                      mode === 'register'
+                        ? 'new-password'
+                        : 'current-password'
+                    }
                   />
                 </div>
-                <div>
-                  <label style={{ fontSize: '0.8125rem', fontWeight: '600', marginBottom: '0.25rem', display: 'block' }}>
-                    Email
-                  </label>
-                  <input 
-                    type="email" 
-                    placeholder="email@domain.com"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    className="input-field"
-                  />
+              )}
+
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="btn btn-primary"
+              >
+                {isSaving ? (
+                  <>
+                    <RefreshCw
+                      size={15}
+                      className="animate-spin"
+                    />
+                    Please wait...
+                  </>
+                ) : mode === 'edit' ? (
+                  <>
+                    <Save size={15} />
+                    Save Changes
+                  </>
+                ) : mode === 'register' ? (
+                  'Create Account'
+                ) : (
+                  'Login'
+                )}
+              </button>
+
+              {/* Register / login switch */}
+              {mode !== 'edit' && (
+                <div
+                  style={{
+                    textAlign: 'center',
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  {mode === 'register' ? (
+                    <>
+                      Already registered?{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPassword('');
+                          setMode('login');
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--primary)',
+                          cursor: 'pointer',
+                          fontWeight: '700'
+                        }}
+                      >
+                        <LogIn
+                          size={14}
+                          style={{
+                            display: 'inline',
+                            verticalAlign: 'middle'
+                          }}
+                        />{' '}
+                        Login
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      New supplier?{' '}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetForm();
+                          setMode('register');
+                        }}
+                        style={{
+                          border: 'none',
+                          background: 'none',
+                          color: 'var(--primary)',
+                          cursor: 'pointer',
+                          fontWeight: '700'
+                        }}
+                      >
+                        Create account
+                      </button>
+                    </>
+                  )}
                 </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.8125rem', fontWeight: '600', marginBottom: '0.25rem', display: 'block' }}>
-                  Address
-                </label>
-                <input 
-                  type="text" 
-                  placeholder="Office / Warehouse address"
-                  value={address}
-                  onChange={e => setAddress(e.target.value)}
-                  className="input-field"
-                />
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '0.5rem' }}>
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn btn-secondary">
-                  Cancel
-                </button>
-                <button type="submit" disabled={isSaving} className="btn btn-primary">
-                  {isSaving ? 'Saving...' : 'Save Supplier'}
-                </button>
-              </div>
+              )}
             </form>
           </div>
         </div>
