@@ -1,5 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../api';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 import {
   BarChart3,
@@ -470,61 +473,161 @@ export default function Reports({ settings }) {
   };
 
   // =====================================================
+  // PREPARE EXPORT DATA
+  // =====================================================
+
+  const getExportData = () => {
+    if (activeReport === 'overview') {
+      alert('Please select a report before exporting.');
+      return null;
+    }
+
+    const config = REPORT_CONFIG[activeReport];
+    if (!config) {
+      alert('The selected report is not supported for export.');
+      return null;
+    }
+
+    const rows = getReportRows(config);
+    if (!rows.length) {
+      alert('No report data available to export.');
+      return null;
+    }
+
+    const columns = getVisibleColumns(config, rows);
+    if (!columns.length) {
+      alert('No report columns available to export.');
+      return null;
+    }
+
+    return {
+      config,
+      columns,
+      rows,
+      head: columns.map((column) => column.label),
+      body: rows.map((row) =>
+        columns.map((column) => {
+          const value = renderCell(row, column);
+          return value === null || value === undefined ? '' : String(value);
+        })
+      ),
+    };
+  };
+
+  const makeExportFilename = (extension) => {
+    const safeReportName = String(activeReport || 'report')
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, '_');
+    return `${safeReportName}_report.${extension}`;
+  };
+
+  // =====================================================
   // EXPORT REPORT TO CSV
   // =====================================================
 
   const exportCurrentReport = () => {
-    if (activeReport === 'overview') {
-      alert('Please select a report before exporting.');
-      return;
+    const exportData = getExportData();
+    if (!exportData) return;
+
+    try {
+      const escapeCSV = (value) => {
+        const text = String(value ?? '');
+        return `"${text.replace(/"/g, '""')}"`;
+      };
+
+      const csv = [
+        exportData.head.map(escapeCSV).join(','),
+        ...exportData.body.map((row) => row.map(escapeCSV).join(',')),
+      ].join('\r\n');
+
+      const blob = new Blob(['\uFEFF' + csv], {
+        type: 'text/csv;charset=utf-8;',
+      });
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = makeExportFilename('csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('CSV export failed:', err);
+      alert('CSV export failed. Please try again.');
     }
+  };
 
-    const config = REPORT_CONFIG[activeReport];
-    const rows = getReportRows(config);
+  // =====================================================
+  // EXPORT REPORT TO EXCEL
+  // =====================================================
 
-    if (!rows.length) {
-      alert('No report data available to export.');
-      return;
+  const exportCurrentReportToExcel = () => {
+    const exportData = getExportData();
+    if (!exportData) return;
+
+    try {
+      const worksheet = XLSX.utils.aoa_to_sheet([
+        exportData.head,
+        ...exportData.body,
+      ]);
+      worksheet['!cols'] = exportData.head.map((heading, index) => ({
+        wch: Math.min(
+          32,
+          Math.max(
+            String(heading).length + 2,
+            ...exportData.body.map((row) => String(row[index] ?? '').length + 2),
+          ),
+        ),
+      }));
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Report');
+      XLSX.writeFile(workbook, makeExportFilename('xlsx'));
+    } catch (err) {
+      console.error('Excel export failed:', err);
+      alert('Excel export failed. Check that the xlsx package is installed.');
     }
+  };
 
-    const columns = getVisibleColumns(config, rows);
+  // =====================================================
+  // EXPORT REPORT TO PDF
+  // =====================================================
 
-    if (!columns.length) {
-      alert('No report columns available to export.');
-      return;
+  const exportCurrentReportToPDF = () => {
+    const exportData = getExportData();
+    if (!exportData) return;
+
+    try {
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      doc.setFontSize(16);
+      doc.text(exportData.config.title || 'Report', 40, 38);
+      doc.setFontSize(9);
+      doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 40, 55);
+
+      autoTable(doc, {
+        head: [exportData.head],
+        body: exportData.body,
+        startY: 70,
+        margin: { left: 40, right: 40 },
+        styles: { fontSize: 8, cellPadding: 4, overflow: 'linebreak' },
+        headStyles: { fontStyle: 'bold' },
+        didDrawPage: () => {
+          const pageNumber = doc.internal.getNumberOfPages();
+          doc.setFontSize(8);
+          doc.text(
+            `Page ${pageNumber}`,
+            doc.internal.pageSize.getWidth() - 55,
+            doc.internal.pageSize.getHeight() - 18,
+          );
+        },
+      });
+
+      doc.save(makeExportFilename('pdf'));
+    } catch (err) {
+      console.error('PDF export failed:', err);
+      alert('PDF export failed. Check that jspdf and jspdf-autotable are installed.');
     }
-
-    const escapeCSV = (value) => {
-      const text = String(value ?? '');
-      return `"${text.replace(/"/g, '""')}"`;
-    };
-
-    const csv = [
-      columns.map((column) => escapeCSV(column.label)).join(','),
-      ...rows.map((row) =>
-        columns
-          .map((column) =>
-            escapeCSV(renderCell(row, column))
-          )
-          .join(',')
-      ),
-    ].join('\n');
-
-    const blob = new Blob(['\uFEFF' + csv], {
-      type: 'text/csv;charset=utf-8;',
-    });
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-
-    link.href = url;
-    link.download = `${activeReport}_report.csv`;
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    URL.revokeObjectURL(url);
   };
 
   // =====================================================
@@ -966,13 +1069,45 @@ export default function Reports({ settings }) {
               </p>
             </div>
 
-            <button
-              className="btn btn-secondary"
-              onClick={exportCurrentReport}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                flexWrap: 'wrap',
+              }}
             >
-              <Download size={16} />
-              Export CSV
-            </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={exportCurrentReport}
+                disabled={!currentRows.length}
+                title={!currentRows.length ? 'No data available to export' : 'Download CSV'}
+              >
+                <Download size={16} />
+                Export CSV
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={exportCurrentReportToExcel}
+                disabled={!currentRows.length}
+                title={!currentRows.length ? 'No data available to export' : 'Download Excel'}
+              >
+                <Download size={16} />
+                Export Excel
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={exportCurrentReportToPDF}
+                disabled={!currentRows.length}
+                title={!currentRows.length ? 'No data available to export' : 'Download PDF'}
+              >
+                <Download size={16} />
+                Export PDF
+              </button>
+            </div>
           </div>
 
           {/* EMPTY STATE */}
