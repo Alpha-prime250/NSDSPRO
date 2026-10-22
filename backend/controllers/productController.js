@@ -1,3 +1,4 @@
+
 const Product = require('../models/Product');
 
 exports.getAllProducts = async (req, res) => {
@@ -40,6 +41,19 @@ exports.getLowStock = async (req, res) => {
     res.json(products);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch low stock alerts', message: err.message });
+  }
+};
+
+exports.getReorderSuggestions = async (req, res) => {
+  try {
+    const { targetMultiplier = 2 } = req.query;
+    const products = await Product.getReorderSuggestions({ targetMultiplier });
+    res.json(products);
+  } catch (err) {
+    res.status(500).json({
+      error: 'Failed to fetch reorder suggestions',
+      message: err.message
+    });
   }
 };
 
