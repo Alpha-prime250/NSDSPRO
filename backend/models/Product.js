@@ -71,6 +71,39 @@ class Product {
     return rows;
   }
 
+  // Returns reorder suggestions for products whose stock is at or below
+  // their minimum stock level.
+  static async getReorderSuggestions({ targetMultiplier = 2 } = {}) {
+    const multiplier = Number(targetMultiplier) > 1
+      ? Number(targetMultiplier)
+      : 2;
+
+    const [rows] = await pool.query(
+      `SELECT
+        id,
+        name,
+        category,
+        barcode,
+        quantity AS current_stock,
+        min_stock_level,
+        supplier_id,
+        supplier_name,
+        purchase_price,
+        selling_price,
+        unit,
+        GREATEST(
+          CEIL((min_stock_level * ?) - quantity),
+          0
+        ) AS suggested_quantity
+      FROM products
+      WHERE quantity <= min_stock_level
+      ORDER BY quantity ASC, name ASC`,
+      [multiplier]
+    );
+
+    return rows;
+  }
+
   static async findExpiring({ days = 30 } = {}) {
     const numDays = parseInt(days, 10) || 30;
     const [rows] = await pool.query(
@@ -94,7 +127,9 @@ class Product {
   }
 
   static async getCategories() {
-    const [rows] = await pool.query('SELECT DISTINCT category FROM products ORDER BY category ASC');
+    const [rows] = await pool.query(
+      'SELECT DISTINCT category FROM products ORDER BY category ASC'
+    );
     return rows.map(r => r.category).filter(Boolean);
   }
 
@@ -124,13 +159,35 @@ class Product {
       `INSERT INTO products 
       (id, name, category, barcode, purchase_price, selling_price, quantity, min_stock_level, supplier_id, supplier_name, mfg_date, expiry_date, unit) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, name, category, barcode, purchase_price, selling_price, initialQty, min_stock_level, supplier_id, supplier_name, cleanMfgDate, cleanExpiryDate, unit]
+      [
+        id,
+        name,
+        category,
+        barcode,
+        purchase_price,
+        selling_price,
+        initialQty,
+        min_stock_level,
+        supplier_id,
+        supplier_name,
+        cleanMfgDate,
+        cleanExpiryDate,
+        unit
+      ]
     );
 
     if (initialQty > 0) {
       await pool.query(
         'INSERT INTO stock_movements (id, product_id, movement_type, quantity, previous_quantity, new_quantity, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [crypto.randomUUID(), id, 'IN', initialQty, 0, initialQty, 'Initial stock entry']
+        [
+          crypto.randomUUID(),
+          id,
+          'IN',
+          initialQty,
+          0,
+          initialQty,
+          'Initial stock entry'
+        ]
       );
     }
 
@@ -158,8 +215,16 @@ class Product {
     } = data;
 
     const newQty = stock_quantity !== undefined ? stock_quantity : quantity;
-    const finalMfgDate = mfg_date !== undefined ? ((mfg_date && mfg_date !== '') ? mfg_date : null) : current.mfg_date;
-    const finalExpiryDate = expiry_date !== undefined ? ((expiry_date && expiry_date !== '') ? expiry_date : null) : current.expiry_date;
+
+    const finalMfgDate =
+      mfg_date !== undefined
+        ? ((mfg_date && mfg_date !== '') ? mfg_date : null)
+        : current.mfg_date;
+
+    const finalExpiryDate =
+      expiry_date !== undefined
+        ? ((expiry_date && expiry_date !== '') ? expiry_date : null)
+        : current.expiry_date;
 
     await pool.query(
       `UPDATE products SET 
@@ -176,14 +241,37 @@ class Product {
         expiry_date = ?,
         unit = COALESCE(?, unit)
       WHERE id = ?`,
-      [name, category, barcode, purchase_price, selling_price, newQty, min_stock_level, supplier_id, supplier_name, finalMfgDate, finalExpiryDate, unit, id]
+      [
+        name,
+        category,
+        barcode,
+        purchase_price,
+        selling_price,
+        newQty,
+        min_stock_level,
+        supplier_id,
+        supplier_name,
+        finalMfgDate,
+        finalExpiryDate,
+        unit,
+        id
+      ]
     );
 
     if (newQty !== undefined && newQty !== current.quantity) {
       const diff = newQty - current.quantity;
+
       await pool.query(
         'INSERT INTO stock_movements (id, product_id, movement_type, quantity, previous_quantity, new_quantity, note) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [crypto.randomUUID(), id, 'ADJUSTMENT', diff, current.quantity, newQty, 'Manual stock adjustment']
+        [
+          crypto.randomUUID(),
+          id,
+          'ADJUSTMENT',
+          diff,
+          current.quantity,
+          newQty,
+          'Manual stock adjustment'
+        ]
       );
     }
 
@@ -191,7 +279,10 @@ class Product {
   }
 
   static async delete(id) {
-    const [res] = await pool.query('DELETE FROM products WHERE id = ?', [id]);
+    const [res] = await pool.query(
+      'DELETE FROM products WHERE id = ?',
+      [id]
+    );
     return res.affectedRows > 0;
   }
 }
